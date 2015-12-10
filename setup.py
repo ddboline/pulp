@@ -18,10 +18,7 @@ exec(open('src/pulp/constants.py').read(), version_dict)
 VERSION = version_dict['VERSION']
 
 #hack because pyparsing made version 2 python 3 specific
-if sys.version_info[0] <= 2:
-    pyparsing_ver = 'pyparsing<=1.9.9'
-else:
-    pyparsing_ver = 'pyparsing>=2.0.0'
+pyparsing_ver = 'pyparsing>=2.0.0'
 
 setup(name="PuLP",
       version=VERSION,
