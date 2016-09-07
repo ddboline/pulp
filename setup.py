@@ -17,9 +17,6 @@ version_dict = {}
 exec(open('src/pulp/constants.py').read(), version_dict)
 VERSION = version_dict['VERSION']
 
-#hack because pyparsing made version 2 python 3 specific
-pyparsing_ver = 'pyparsing>=2.0.0'
-
 setup(name="PuLP",
       version=VERSION,
       description="""
@@ -65,7 +62,7 @@ problems.
                       'pulp.solverdir.cbc.win.64' : ['*','*.*'],
                       'pulp.solverdir.cbc.osx.64' : ['*','*.*'],
                       },
-      install_requires = [pyparsing_ver],
+      install_requires = ['pyparsing>=2.0.1'],
       entry_points = ("""
       [console_scripts]
       pulptest = pulp:pulpTestAll
