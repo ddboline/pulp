@@ -96,6 +96,7 @@ References:
 import types
 import string
 import itertools
+import warnings
 
 from .constants import *
 from .solvers import *
@@ -1330,9 +1331,13 @@ class LpProblem(object):
         elif isinstance(other, LpConstraint):
             self.addConstraint(other, name)
         elif isinstance(other, LpAffineExpression):
+            if self.objective is not None:
+                warnings.warn("Overwriting previously set objective.")
             self.objective = other
             self.objective.name = name
         elif isinstance(other, LpVariable) or isinstance(other, (int, float)):
+            if self.objective is not None:
+                warnings.warn("Overwriting previously set objective.")
             self.objective = LpAffineExpression(other)
             self.objective.name = name
         else:
@@ -1505,6 +1510,7 @@ class LpProblem(object):
         f.write("Subject To\n")
         ks = list(self.constraints.keys())
         ks.sort()
+        dummyWritten = False
         for k in ks:
             constraint = self.constraints[k]
             if not list(constraint.keys()):
@@ -1512,7 +1518,9 @@ class LpProblem(object):
                 dummyVar = self.get_dummyVar()
                 constraint += dummyVar
                 #set this dummyvar to zero so infeasible problems are not made feasible
-                f.write((dummyVar == 0.0).asCplexLpConstraint("_dummy"))
+                if not dummyWritten:
+                    f.write((dummyVar == 0.0).asCplexLpConstraint("_dummy"))
+                    dummyWritten = True
             f.write(constraint.asCplexLpConstraint(k))
         vs = self.variables()
         # check if any names are longer than 100 characters

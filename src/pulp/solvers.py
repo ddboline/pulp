@@ -31,7 +31,6 @@ the current version
 """
 
 import os
-import subprocess
 import sys
 from time import clock
 try:
@@ -46,6 +45,16 @@ from .constants import *
 
 import logging
 log = logging.getLogger(__name__)
+
+if os.name == "posix" and sys.version_info[0] < 3:
+    try:
+        import subprocess32 as subprocess
+    except ImportError:
+        log.debug("Thread-safe subprocess32 module not found! "
+                  "Using unsafe built-in subprocess module instead.")
+        import subprocess
+else:
+    import subprocess
 
 class PulpSolverError(PulpError):
     """
@@ -99,12 +108,16 @@ def initialize(filename, operating_system='linux', arch='64'):
         pulp_cbc_path = config.get("locations", "PulpCbcPath")
     except configparser.Error:
         pulp_cbc_path = 'cbc'
+    try:
+        scip_path = config.get("locations", "ScipPath")
+    except configparser.Error:
+        scip_path = 'scip'
     for i,path in enumerate(coinMP_path):
         if not os.path.dirname(path):
             #if no pathname is supplied assume the file is in the same directory
             coinMP_path[i] = os.path.join(os.path.dirname(config_filename),path)
     return cplex_dll_path, ilm_cplex_license, ilm_cplex_license_signature,\
-        coinMP_path, gurobi_path, cbc_path, glpk_path, pulp_cbc_path
+        coinMP_path, gurobi_path, cbc_path, glpk_path, pulp_cbc_path, scip_path
 
 #pick up the correct config file depending on operating system
 PULPCFGFILE = "pulp.cfg"
@@ -134,8 +147,8 @@ else: #run as a script
     DIRNAME = os.path.dirname(fname)
     config_filename = os.path.join(DIRNAME,
                                    PULPCFGFILE)
-cplex_dll_path, ilm_cplex_license, ilm_cplex_license_signature, \
-        coinMP_path, gurobi_path, cbc_path, glpk_path, pulp_cbc_path = \
+cplex_dll_path, ilm_cplex_license, ilm_cplex_license_signature, coinMP_path,\
+        gurobi_path, cbc_path, glpk_path, pulp_cbc_path, scip_path = \
         initialize(config_filename, operating_system, arch)
 
 
@@ -360,8 +373,14 @@ class GLPK_CMD(LpSolver_CMD):
         if not self.msg:
             proc[0] = self.path
             pipe = open(os.devnull, 'w')
-            rc = subprocess.call(proc, stdout = pipe,
-                             stderr = pipe)
+            if operating_system == 'win':
+                # Prevent flashing windows if used from a GUI application
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                rc = subprocess.call(proc, stdout = pipe, stderr = pipe,
+                                     startupinfo = startupinfo)
+            else:
+                rc = subprocess.call(proc, stdout = pipe, stderr = pipe)
             if rc:
                 raise PulpSolverError("PuLP: Error while trying to execute "+self.path)
         else:
@@ -429,12 +448,12 @@ GLPK = GLPK_CMD
 
 class CPLEX_CMD(LpSolver_CMD):
     """The CPLEX LP solver"""
-    
+
     def __init__(self, path = None, keepFiles = 0, mip = 1,
             msg = 0, options = [], timelimit = None):
         LpSolver_CMD.__init__(self, path, keepFiles, mip, msg, options)
         self.timelimit = timelimit
-    
+
     def defaultPath(self):
         return self.executableExtension("cplex")
 
@@ -545,9 +564,9 @@ def CPLEX_DLL_load_dll(path):
     """
     import ctypes
     if os.name in ['nt','dos']:
-        lib = ctypes.windll.LoadLibrary(path)
+        lib = ctypes.windll.LoadLibrary(str(path))
     else:
-        lib = ctypes.cdll.LoadLibrary(path)
+        lib = ctypes.cdll.LoadLibrary(str(path))
     return lib
 
 try:
@@ -1545,7 +1564,7 @@ def COINMP_DLL_load_dll(path):
     """
     import ctypes
     if os.name == 'nt':
-        lib = ctypes.windll.LoadLibrary(path[-1])
+        lib = ctypes.windll.LoadLibrary(str(path[-1]))
     else:
         #linux hack to get working
         mode = ctypes.RTLD_GLOBAL
@@ -2564,3 +2583,117 @@ class GurobiFormulation(object):
             else:
                 raise TypeError("Can only add LpConstraint, LpAffineExpression or True objects")
             return self
+
+class SCIP_CMD(LpSolver_CMD):
+    """The SCIP optimization solver"""
+
+    SCIP_STATUSES = {
+        'unknown': LpStatusUndefined,
+        'user interrupt': LpStatusNotSolved,
+        'node limit reached': LpStatusNotSolved,
+        'total node limit reached': LpStatusNotSolved,
+        'stall node limit reached': LpStatusNotSolved,
+        'time limit reached': LpStatusNotSolved,
+        'memory limit reached': LpStatusNotSolved,
+        'gap limit reached': LpStatusNotSolved,
+        'solution limit reached': LpStatusNotSolved,
+        'solution improvement limit reached': LpStatusNotSolved,
+        'restart limit reached': LpStatusNotSolved,
+        'optimal solution found': LpStatusOptimal,
+        'infeasible':   LpStatusInfeasible,
+        'unbounded': LpStatusUnbounded,
+        'infeasible or unbounded': LpStatusNotSolved,
+    }
+
+    def defaultPath(self):
+        return self.executableExtension(scip_path)
+
+    def available(self):
+        """True if the solver is available"""
+        return self.executable(self.path)
+
+    def actualSolve(self, lp):
+        """Solve a well formulated lp problem"""
+        if not self.executable(self.path):
+            raise PulpSolverError("PuLP: cannot execute "+self.path)
+
+        # TODO: should we use tempfile instead?
+        if not self.keepFiles:
+            pid = os.getpid()
+            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
+            tmpSol = os.path.join(self.tmpDir, "%d-pulp.sol" % pid)
+        else:
+            tmpLp = lp.name + "-pulp.lp"
+            tmpSol = lp.name + "-pulp.sol"
+
+        lp.writeLP(tmpLp)
+        proc = [
+            'scip', '-c', 'read "%s"' % tmpLp, '-c', 'optimize',
+            '-c', 'write solution "%s"' % tmpSol, '-c', 'quit'
+        ]
+        proc.extend(self.options)
+        if not self.msg:
+            proc.append('-q')
+
+        self.solution_time = clock()
+        subprocess.check_call(proc, stdout=sys.stdout, stderr=sys.stderr)
+        self.solution_time += clock()
+
+        if not os.path.exists(tmpSol):
+            raise PulpSolverError("PuLP: Error while executing "+self.path)
+
+        lp.status, values = self.readsol(tmpSol)
+
+        # Make sure to add back in any 0-valued variables SCIP leaves out.
+        finalVals = {}
+        for v in lp.variables():
+            finalVals[v.name] = values.get(v.name, 0.0)
+
+        lp.assignVarsVals(finalVals)
+
+        if not self.keepFiles:
+            for f in (tmpLp, tmpSol):
+                try:
+                    os.remove(f)
+                except:
+                    pass
+
+        return lp.status
+
+    def readsol(self, filename):
+        """Read a SCIP solution file"""
+        with open(filename) as f:
+            # First line must containt 'solution status: <something>'
+            try:
+                line = f.readline()
+                comps = line.split(': ')
+                assert comps[0] == 'solution status'
+                assert len(comps) == 2
+            except:
+                raise
+                raise PulpSolverError("Can't read SCIP solver output: %r" % line)
+
+            status = SCIP_CMD.SCIP_STATUSES.get(comps[1].strip(), LpStatusUndefined)
+
+            # Look for an objective value. If we can't find one, stop.
+            try:
+                line = f.readline()
+                comps = line.split(': ')
+                assert comps[0] == 'objective value'
+                assert len(comps) == 2
+                float(comps[1].strip())
+            except:
+                raise PulpSolverError("Can't read SCIP solver output: %r" % line)
+
+            # Parse the variable values.
+            values = {}
+            for line in f:
+                try:
+                    comps = line.split()
+                    values[comps[0]] = float(comps[1])
+                except:
+                    raise PulpSolverError("Can't read SCIP solver output: %r" % line)
+
+        return status, values
+
+SCIP = SCIP_CMD
