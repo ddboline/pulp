@@ -33,6 +33,7 @@ the current version
 import os
 import sys
 from time import clock
+from uuid import uuid4
 try:
     import configparser
 except ImportError:
@@ -358,9 +359,9 @@ class GLPK_CMD(LpSolver_CMD):
         if not self.executable(self.path):
             raise PulpSolverError("PuLP: cannot execute "+self.path)
         if not self.keepFiles:
-            pid = os.getpid()
-            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
-            tmpSol = os.path.join(self.tmpDir, "%d-pulp.sol" % pid)
+            uuid = uuid4().hex
+            tmpLp = os.path.join(self.tmpDir, "%s-pulp.lp" % uuid)
+            tmpSol = os.path.join(self.tmpDir, "%s-pulp.sol" % uuid)
         else:
             tmpLp = lp.name+"-pulp.lp"
             tmpSol = lp.name+"-pulp.sol"
@@ -466,9 +467,9 @@ class CPLEX_CMD(LpSolver_CMD):
         if not self.executable(self.path):
             raise PulpSolverError("PuLP: cannot execute "+self.path)
         if not self.keepFiles:
-            pid = os.getpid()
-            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
-            tmpSol = os.path.join(self.tmpDir, "%d-pulp.sol" % pid)
+            uuid = uuid4().hex
+            tmpLp = os.path.join(self.tmpDir, "%s-pulp.lp" % uuid)
+            tmpSol = os.path.join(self.tmpDir, "%s-pulp.sol" % uuid)
         else:
             tmpLp = lp.name+"-pulp.lp"
             tmpSol = lp.name+"-pulp.sol"
@@ -1007,22 +1008,6 @@ else:
         For api functions that have not been wrapped in this solver please use
         the base cplex classes
         """
-        CplexLpStatus = {cplex.Cplex.solution.status.MIP_optimal: LpStatusOptimal,
-                        cplex.Cplex.solution.status.optimal: LpStatusOptimal,
-                        cplex.Cplex.solution.status.optimal_tolerance: LpStatusOptimal,
-                        cplex.Cplex.solution.status.infeasible: LpStatusInfeasible,
-                        cplex.Cplex.solution.status.infeasible_or_unbounded:  LpStatusInfeasible,
-                        cplex.Cplex.solution.status.MIP_infeasible: LpStatusInfeasible,
-                        cplex.Cplex.solution.status.MIP_infeasible_or_unbounded:  LpStatusInfeasible,
-                        cplex.Cplex.solution.status.unbounded: LpStatusUnbounded,
-                        cplex.Cplex.solution.status.MIP_unbounded: LpStatusUnbounded,
-                        cplex.Cplex.solution.status.abort_dual_obj_limit: LpStatusNotSolved,
-                        cplex.Cplex.solution.status.abort_iteration_limit: LpStatusNotSolved,
-                        cplex.Cplex.solution.status.abort_obj_limit: LpStatusNotSolved,
-                        cplex.Cplex.solution.status.abort_relaxed: LpStatusNotSolved,
-                        cplex.Cplex.solution.status.abort_time_limit: LpStatusNotSolved,
-                        cplex.Cplex.solution.status.abort_user: LpStatusNotSolved,
-                        }
 
         def __init__(self,
                     mip = True,
@@ -1173,8 +1158,23 @@ else:
             self.solveTime += clock()
 
         def findSolutionValues(self, lp):
+            CplexLpStatus = {lp.solverModel.solution.status.MIP_optimal: LpStatusOptimal,
+                             lp.solverModel.solution.status.optimal: LpStatusOptimal,
+                             lp.solverModel.solution.status.optimal_tolerance: LpStatusOptimal,
+                             lp.solverModel.solution.status.infeasible: LpStatusInfeasible,
+                             lp.solverModel.solution.status.infeasible_or_unbounded:  LpStatusInfeasible,
+                             lp.solverModel.solution.status.MIP_infeasible: LpStatusInfeasible,
+                             lp.solverModel.solution.status.MIP_infeasible_or_unbounded:  LpStatusInfeasible,
+                             lp.solverModel.solution.status.unbounded: LpStatusUnbounded,
+                             lp.solverModel.solution.status.MIP_unbounded: LpStatusUnbounded,
+                             lp.solverModel.solution.status.abort_dual_obj_limit: LpStatusNotSolved,
+                             lp.solverModel.solution.status.abort_iteration_limit: LpStatusNotSolved,
+                             lp.solverModel.solution.status.abort_obj_limit: LpStatusNotSolved,
+                             lp.solverModel.solution.status.abort_relaxed: LpStatusNotSolved,
+                             lp.solverModel.solution.status.abort_time_limit: LpStatusNotSolved,
+                             lp.solverModel.solution.status.abort_user: LpStatusNotSolved}
             lp.cplex_status = lp.solverModel.solution.get_status()
-            lp.status = self.CplexLpStatus.get(lp.cplex_status, LpStatusUndefined)
+            lp.status = CplexLpStatus.get(lp.cplex_status, LpStatusUndefined)
             var_names = [var.name for var in lp.variables()]
             con_names = [con for con in lp.constraints]
             try:
@@ -1249,9 +1249,9 @@ class XPRESS(LpSolver_CMD):
         if not self.executable(self.path):
             raise PulpSolverError("PuLP: cannot execute "+self.path)
         if not self.keepFiles:
-            pid = os.getpid()
-            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
-            tmpSol = os.path.join(self.tmpDir, "%d-pulp.prt" % pid)
+            uuid = uuid4().hex
+            tmpLp = os.path.join(self.tmpDir, "%s-pulp.lp" % uuid)
+            tmpSol = os.path.join(self.tmpDir, "%s-pulp.prt" % uuid)
         else:
             tmpLp = lp.name+"-pulp.lp"
             tmpSol = lp.name+"-pulp.prt"
@@ -1371,10 +1371,10 @@ class COIN_CMD(LpSolver_CMD):
             raise PulpSolverError("Pulp: cannot execute %s cwd: %s"%(self.path,
                                    os.getcwd()))
         if not self.keepFiles:
-            pid = os.getpid()
-            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
-            tmpMps = os.path.join(self.tmpDir, "%d-pulp.mps" % pid)
-            tmpSol = os.path.join(self.tmpDir, "%d-pulp.sol" % pid)
+            uuid = uuid4().hex
+            tmpLp = os.path.join(self.tmpDir, "%s-pulp.lp" % uuid)
+            tmpMps = os.path.join(self.tmpDir, "%s-pulp.mps" % uuid)
+            tmpSol = os.path.join(self.tmpDir, "%s-pulp.sol" % uuid)
         else:
             tmpLp = lp.name+"-pulp.lp"
             tmpMps = lp.name+"-pulp.mps"
@@ -1744,8 +1744,7 @@ class COINMP_DLL(LpSolver):
             #put pi and slack variables against the constraints
             for i in range(numRows):
                 constraintpivalues[self.n2c[i]] = cShadowPrices[i]
-                constraintslackvalues[self.n2c[i]] = \
-                    rhsValues[i] - cSlackValues[i]
+                constraintslackvalues[self.n2c[i]] = cSlackValues[i]
             lp.assignConsPi(constraintpivalues)
             lp.assignConsSlack(constraintslackvalues)
 
@@ -1959,9 +1958,9 @@ class GUROBI_CMD(LpSolver_CMD):
         if not self.executable(self.path):
             raise PulpSolverError("PuLP: cannot execute "+self.path)
         if not self.keepFiles:
-            pid = os.getpid()
-            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
-            tmpSol = os.path.join(self.tmpDir, "%d-pulp.sol" % pid)
+            uuid = uuid4().hex
+            tmpLp = os.path.join(self.tmpDir, "%s-pulp.lp" % uuid)
+            tmpSol = os.path.join(self.tmpDir, "%s-pulp.sol" % uuid)
         else:
             tmpLp = lp.name+"-pulp.lp"
             tmpSol = lp.name+"-pulp.sol"
@@ -2026,8 +2025,9 @@ class GUROBI_CMD(LpSolver_CMD):
             values = {}
             reducedCosts = {}
             for line in my_file:
-                    name, value  = line.split()
-                    values[name] = float(value)
+                    if line[0] != '#': #skip comments
+                        name, value  = line.split()
+                        values[name] = float(value)
         return status, values, reducedCosts, shadowPrices, slacks
 
 #get the glpk name in global scope
@@ -2619,9 +2619,9 @@ class SCIP_CMD(LpSolver_CMD):
 
         # TODO: should we use tempfile instead?
         if not self.keepFiles:
-            pid = os.getpid()
-            tmpLp = os.path.join(self.tmpDir, "%d-pulp.lp" % pid)
-            tmpSol = os.path.join(self.tmpDir, "%d-pulp.sol" % pid)
+            uuid = uuid4().hex
+            tmpLp = os.path.join(self.tmpDir, "%s-pulp.lp" % uuid)
+            tmpSol = os.path.join(self.tmpDir, "%s-pulp.sol" % uuid)
         else:
             tmpLp = lp.name + "-pulp.lp"
             tmpSol = lp.name + "-pulp.sol"
